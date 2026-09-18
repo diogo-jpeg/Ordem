@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090a0c">
+  <title>Ordo Realitas • Criador de Fichas</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="noise"></div>
+  <header class="topbar">
+    <a class="brand" href="#nex"><img src="assets/sigil.svg" alt="Símbolo"><span>ORDEM <strong>PARANORMAL</strong> • FICHA</span></a>
+    <div class="top-actions">
+      <button class="btn ghost" id="saveBtn">Salvar</button>
+      <button class="btn ghost" id="exportBtn">Exportar</button>
+      <button class="btn ghost" id="importBtn">Importar</button>
+      <button class="btn ghost" id="printBtn">Imprimir</button>
+      <button class="btn danger" id="resetBtn">Limpar</button>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <aside class="sheet-panel" aria-label="Ficha em tempo real">
+      <div class="sheet-head">
+        <div><p class="eyebrow">Agente da Ordem</p><input id="characterName" class="name-input" value="Novo Agente" maxlength="50" aria-label="Nome do personagem"></div>
+        <span class="nex-badge" id="sheetNex">NEX —</span>
+      </div>
+      <div class="sheet-ident">
+        <div><span>Origem</span><strong id="sheetOrigin">—</strong></div>
+        <div><span>Classe</span><strong id="sheetClass">—</strong></div>
+        <div><span>Trilha</span><strong id="sheetTrail">—</strong></div>
+        <div><span>Patente</span><strong id="sheetPatent">Recruta</strong></div>
+      </div>
+
+      <section class="sheet-block">
+        <div class="block-title"><span>Atributos</span><small id="sheetAttrNote">iniciais</small></div>
+        <div class="attr-row">
+          <div><span>AGI</span><strong id="sAgi">1</strong></div><div><span>FOR</span><strong id="sFor">1</strong></div><div><span>INT</span><strong id="sInt">1</strong></div><div><span>PRE</span><strong id="sPre">1</strong></div><div><span>VIG</span><strong id="sVig">1</strong></div>
+        </div>
+      </section>
+
+      <section class="sheet-block">
+        <div class="block-title"><span>Recursos</span><small>máximos</small></div>
+        <div class="vitals-grid">
+          <div class="vital pv"><span>PV</span><strong id="sheetPV">—</strong><small>vida</small></div>
+          <div class="vital pe"><span>PE</span><strong id="sheetPE">—</strong><small>esforço</small></div>
+          <div class="vital san"><span>SAN</span><strong id="sheetSAN">—</strong><small>sanidade</small></div>
+          <div class="vital def"><span>DEF</span><strong id="sheetDEF">11</strong><small>defesa</small></div>
+        </div>
+      </section>
+
+      <section class="sheet-block">
+        <div class="block-title"><span>Inventário</span><small id="loadText">0 / 5 espaços</small></div>
+        <div class="loadbar"><span id="loadFill"></span></div>
+        <p class="status-line" id="loadStatus">Carga normal</p>
+        <div class="mini-list" id="sheetInventory"><div class="empty-state">Nenhum item selecionado.</div></div>
+      </section>
+
+      <section class="sheet-block">
+        <div class="block-title"><span>Habilidades</span><small id="powerCountLabel">0 escolhas</small></div>
+        <div class="mini-list" id="sheetPowers"><div class="empty-state">Nenhuma habilidade escolhida.</div></div>
+      </section>
+
+      <section class="sheet-block">
+        <div class="block-title"><span>Perícias</span><small>treinadas+</small></div>
+        <div class="tag-cloud" id="sheetSkills"><span>—</span></div>
+      </section>
+
+      <section class="sheet-block compact">
+        <div class="block-title"><span>Rituais</span><small id="ritualCountLabel">0</small></div>
+        <div class="mini-list" id="sheetRituals"><div class="empty-state">Nenhum ritual.</div></div>
+      </section>
+    </aside>
+
+    <div class="builder-panel">
+      <nav class="stepnav" aria-label="Etapas da ficha">
+        <a class="step active" href="#nex"><span>01</span>NEX</a><a class="step" href="#atributos"><span>02</span>Atributos</a><a class="step" href="#origem"><span>03</span>Origem</a><a class="step" href="#classe"><span>04</span>Classe</a><a class="step" href="#trilha"><span>05</span>Trilha</a><a class="step" href="#poderes"><span>06</span>Poderes</a><a class="step" href="#pericias"><span>07</span>Perícias</a><a class="step" href="#rituais"><span>08</span>Rituais</a><a class="step" href="#inventario"><span>09</span>Inventário</a><a class="step" href="#final"><span>10</span>Final</a>
+      </nav>
+
+      <section class="builder-section" id="nex">
+        <div class="section-head"><div><p class="eyebrow">Primeira escolha obrigatória</p><h2>Nível de Exposição Paranormal</h2></div><button class="info-pill" data-info="nex">Como funciona?</button></div>
+        <p class="section-desc">O NEX define quais habilidades, aumentos de atributo, graus de treinamento, círculos de ritual e poderes de trilha estão disponíveis. Selecione-o antes de qualquer outra escolha.</p>
+        <div class="nex-grid wide" id="nexGrid"></div>
+        <div class="unlock-strip" id="unlockStrip"></div>
+      </section>
+
+      <section class="builder-section" id="atributos">
+        <div class="section-head"><div><p class="eyebrow">Base + progressão por NEX</p><h2>Atributos</h2></div><button class="info-pill" data-info="attributes">Regras</button></div>
+        <p class="section-desc">Todos começam em 1 e você distribui 4 pontos. Pode reduzir apenas um atributo para 0 para receber um ponto adicional. O máximo inicial é 3. Aumentos de NEX aparecem abaixo quando desbloqueados.</p>
+        <div class="subcard">
+          <div class="subcard-head"><div><h3>Atributos iniciais</h3><p>Distribua os pontos antes dos aumentos de NEX.</p></div><span class="counter" id="attrCounter">4 pontos restantes</span></div>
+          <div class="attribute-editor" id="attributeEditor"></div>
+        </div>
+        <div class="boost-list" id="boostList"></div>
+      </section>
+
+      <section class="builder-section" id="origem">
+        <div class="section-head"><div><p class="eyebrow">Vida antes da Ordem</p><h2>Origem</h2></div><div class="searchbox"><input id="originSearch" placeholder="Buscar origem..." aria-label="Buscar origem"></div></div>
+        <p class="section-desc">Cada origem concede duas perícias treinadas e um poder próprio. O botão “i” abre os detalhes completos cadastrados a partir do livro.</p>
+        <div class="option-grid" id="originGrid"></div>
+      </section>
+
+      <section class="builder-section" id="classe">
+        <div class="section-head"><div><p class="eyebrow">Treinamento na Ordem</p><h2>Classe</h2></div><button class="info-pill" data-info="classes">Sobre as classes</button></div>
+        <p class="section-desc">A classe define PV, PE, Sanidade, proficiências, perícias, poderes e trilhas.</p>
+        <div class="option-grid classes" id="classGrid"></div>
+      </section>
+
+      <section class="builder-section" id="trilha">
+        <div class="section-head"><div><p class="eyebrow">Desbloqueada no NEX 10%</p><h2>Trilha</h2></div><span class="lock-note" id="trailLock">Escolha NEX e classe.</span></div>
+        <p class="section-desc">A trilha concede habilidades em NEX 10%, 40%, 65% e 99%. As habilidades acima do seu NEX aparecem bloqueadas na ficha de referência.</p>
+        <div class="option-grid" id="trailGrid"></div>
+        <div class="conditional-box hidden" id="favoriteBox"><div><strong>Arma Favorita</strong><p>A Favorita precisa apontar para uma arma do inventário.</p></div><select id="favoriteWeapon"></select></div>
+      </section>
+
+      <section class="builder-section" id="poderes">
+        <div class="section-head"><div><p class="eyebrow">NEX 15%, 30%, 45%...</p><h2>Poderes de Classe</h2></div><span class="counter" id="classPowerCounter">0 / 0</span></div>
+        <p class="section-desc">Clique para adicionar ao próximo espaço disponível. Poderes que o livro permite repetir, como Transcender e Treinamento em Perícia, podem ser escolhidos mais de uma vez.</p>
+        <div class="slot-strip" id="powerSlots"></div>
+        <div class="conditional-box hidden" id="versatilityBox"></div>
+        <div class="option-grid" id="powerGrid"></div>
+        <div class="selected-stack" id="selectedPowers"></div>
+
+        <div class="subcard paranormal-card" id="paranormalBlock">
+          <div class="subcard-head"><div><h3>Poderes Paranormais</h3><p>Disponíveis por Transcender e por Traços do Outro Lado.</p></div><span class="counter" id="paranormalCounter">0 / 0</span></div>
+          <div class="element-filters" id="elementFilters"></div>
+          <div class="option-grid" id="paranormalGrid"></div>
+          <div class="selected-stack" id="selectedParanormal"></div>
+        </div>
+      </section>
+
+      <section class="builder-section" id="pericias">
+        <div class="section-head"><div><p class="eyebrow">Origem + classe + Intelecto</p><h2>Perícias</h2></div><span class="counter" id="skillCounter">0 / 0</span></div>
+        <div id="combatSkillChoices" class="conditional-box hidden"></div>
+        <p class="section-desc">Perícias da origem e perícias fixas da classe ficam travadas. Selecione as perícias adicionais exigidas pela classe. O painel também libera os graus de treinamento de NEX 35% e 70%.</p>
+        <div class="skills-grid" id="skillsGrid"></div>
+        <div class="training-panel" id="trainingPanel"></div>
+      </section>
+
+      <section class="builder-section" id="rituais">
+        <div class="section-head"><div><p class="eyebrow">Ocultista e poderes paranormais</p><h2>Rituais</h2></div><div class="searchbox"><input id="ritualSearch" placeholder="Buscar ritual..." aria-label="Buscar ritual"></div></div>
+        <p class="section-desc" id="ritualDesc">Escolha Ocultista para liberar a progressão automática de rituais. O círculo máximo depende do NEX.</p>
+        <div class="slot-strip" id="circleStrip"></div>
+        <div class="ritual-filters" id="ritualFilters"></div>
+        <div class="catalog-grid" id="ritualGrid"></div>
+      </section>
+
+      <section class="builder-section" id="inventario">
+        <div class="section-head"><div><p class="eyebrow">Carga + patente</p><h2>Inventário e Equipamentos</h2></div><button class="info-pill" data-info="inventory">Regras de carga</button></div>
+        <p class="section-desc">A capacidade normal é 5 espaços por ponto de Força (2 espaços com Força 0). Acima disso você fica sobrecarregado e nunca pode ultrapassar o dobro. A patente também limita as categorias de itens.</p>
+        <div class="inventory-controls">
+          <label>Patente<select id="patentSelect"></select></label>
+          <div class="searchbox"><input id="itemSearch" placeholder="Buscar arma, proteção, item..."></div>
+          <label>Tipo<select id="itemType"><option value="">Todos</option></select></label>
+        </div>
+        <div class="patent-limits" id="patentLimits"></div>
+        <div class="conditional-box hidden" id="kitFavoriteBox"></div>
+        <div class="catalog-grid" id="inventoryCatalog"></div>
+      </section>
+
+      <section class="builder-section final-section" id="final">
+        <p class="eyebrow">Revisão</p><h2>Ficha pronta para a missão</h2>
+        <p class="section-desc">O sistema verifica escolhas obrigatórias, excesso de carga e limites de categoria. Você pode salvar no navegador, exportar JSON ou imprimir a ficha resumida.</p>
+        <div class="validation-box" id="validationBox"></div>
+        <div class="final-actions"><button class="btn primary" id="finalSave">Salvar ficha</button><button class="btn" id="finalExport">Exportar JSON</button><button class="btn" id="finalPrint">Imprimir ficha</button></div>
+      </section>
+    </div>
+  </main>
+
+  <div class="modal" id="infoModal" aria-hidden="true"><div class="modal-backdrop" data-close-modal></div><article class="modal-card"><button class="modal-close" data-close-modal aria-label="Fechar">×</button><p class="eyebrow" id="modalEyebrow">Informação</p><h2 id="modalTitle"></h2><div class="modal-body" id="modalBody"></div></article></div>
+
+  <div class="gate open" id="nexGate">
+    <div class="gate-card"><div class="gate-sigil"><img src="assets/sigil.svg" alt=""></div><p class="eyebrow">A exposição vem primeiro</p><h1>Escolha o NEX do agente</h1><p>O NEX controla todo o restante da progressão. Você poderá alterá-lo depois; escolhas que deixarem de estar disponíveis serão recalculadas.</p><div class="nex-grid" id="gateNexGrid"></div><small>Baseado na progressão do PDF fornecido.</small></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="js/data.js"></script>
+  <script src="js/rituals_full.js"></script>
+  <script src="js/script.js"></script>
+</body>
+</html>
