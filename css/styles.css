@@ -6,3 +6,43 @@
 /* Complementos do construtor */
 a.step{text-decoration:none}.counter.bad{border-color:#7e2733;color:#ef929e}.locked-boost{opacity:.45}.selected-stack{display:grid;gap:7px;margin-top:12px}.selected-row{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #32363d;background:#15171b;border-radius:7px;padding:9px 11px;font-size:11px}.selected-row b{color:#b96e78;margin-right:6px}.selected-row button,.mini-config{border:1px solid #3a3e45;background:#202329;color:#c9c9c9;border-radius:5px;padding:5px 8px;cursor:pointer;font-size:10px}.paranormal-card{margin-top:20px}.element-filters,.ritual-filters{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.skill-chip small{opacity:.55;margin-left:4px}.training-panel{display:grid;gap:10px;margin-top:14px}.inline-selects{display:flex;gap:8px;flex-wrap:wrap}.inline-selects select,.conditional-box select{background:#0e1013;border:1px solid #373b42;color:#ddd;border-radius:7px;padding:9px}.mini-config{margin-top:7px}.modal-checks{display:grid;gap:8px}.modal-checks label{display:grid;grid-template-columns:18px 150px 1fr;gap:8px;align-items:start;border-top:1px solid #2b2f35;padding-top:10px;font-size:12px}.modal-checks span{color:#8f9299}.source-note{font-size:11px;color:#777;border-top:1px solid #30343b;padding-top:10px}.option-card b{color:#d8c9bd}.ritual-filters{margin-bottom:12px}.gate .nex-option{min-width:70px}.gate .nex-grid{grid-template-columns:repeat(5,1fr)}
 @media(max-width:760px){.inventory-effect-selects{grid-template-columns:1fr}.modal-checks label{grid-template-columns:18px 1fr}.modal-checks span{grid-column:2}.selected-row{align-items:flex-start}.gate .nex-grid{grid-template-columns:repeat(4,1fr)}}
+
+/* Correção do layout responsivo dos controles do inventário */
+.inventory-controls{grid-template-columns:repeat(4,minmax(0,1fr));align-items:end;gap:12px}
+.inventory-controls>*{min-width:0;width:100%;box-sizing:border-box}
+.inventory-controls label{min-width:0}
+.inventory-controls select,.inventory-controls .searchbox input{display:block;width:100%;min-width:0;max-width:100%;margin:0;box-sizing:border-box}
+.inventory-controls .searchbox{min-width:0;width:100%}
+@media(max-width:1100px){.inventory-controls{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.inventory-controls{grid-template-columns:minmax(0,1fr)}}
+
+/* Catálogo de maldições e configuração de equipamentos v1.3 */
+.curses-editor{display:grid;gap:11px}.curse-option{padding:12px 14px;border:1px solid #3c3438;border-radius:10px;background:#17181e}.curse-option>label{display:flex;gap:10px;align-items:center;color:#ddd;cursor:pointer}.curse-option b{font-size:13px}.curse-option i{font-size:10px;font-style:normal;color:#bf8391}.curse-option>p{font-size:12px;color:#a7a9b0;line-height:1.55;margin:8px 0 0 25px}.curse-conflict{border-color:#9a3d46}.curse-setting{display:grid;margin:10px 0 0 25px;gap:4px;font-size:11px;color:#a9acb3}.curse-setting select{min-width:0;width:100%;max-width:100%;background:#101216;color:#e9e9e9;border:1px solid #505159;border-radius:7px;padding:9px}.curse-rule-note{margin-top:22px;padding:14px;border-top:1px solid #434048;color:#a8a1a4;font-size:11px;line-height:1.6}.gear-equipped{display:flex!important;gap:7px;align-items:center;margin-top:9px;font-size:11px!important;color:#c0b6b8!important;text-transform:none!important;letter-spacing:normal!important}.gear-equipped input{accent-color:#b5394e}.curse-inline{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}.curse-inline span{border:1px solid #663746;background:#29171c;border-radius:13px;color:#e0a2b0;font-size:9px;padding:3px 7px}.sheet-inventory-row details{font-size:10px;color:#c4a4b0;margin-top:5px}.sheet-inventory-row summary{cursor:pointer}.sheet-inventory-row details p{margin:5px 0;padding-left:8px;line-height:1.5;color:#bdbaba}.gear-bonus-list{border-top:1px solid #51323c;margin-top:7px;padding-top:8px}.gear-bonus-list strong{color:#e1bec5;font-size:11px}.gear-bonus-list p{font-size:10px;margin:5px 0;line-height:1.45}.modal-card{width:min(760px,calc(100% - 20px));max-height:90vh}.modal-checks label{min-width:0}.modal-checks label span{overflow-wrap:anywhere}@media(max-width:640px){.modal-card{padding:19px 14px}.curses-editor .curse-option{padding:10px}.curse-setting{margin-left:0}.inventory-controls{grid-template-columns:1fr!important}}
+
+/* Várias versões independentes do mesmo equipamento */
+.catalog-with-versions{display:flex;flex-direction:column;align-items:stretch;gap:11px;min-width:0}
+.catalog-with-versions>.catalog-heading{min-width:0;padding-right:24px}
+.catalog-with-versions>.catalog-heading>strong{display:block;overflow-wrap:anywhere}
+.catalog-add-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:2px}
+.catalog-add-actions button{border:1px solid #5a3940;background:#381920;color:#f0d7db;font-size:11px;font-weight:650;padding:8px 10px;border-radius:7px;cursor:pointer;flex:1 1 135px}
+.catalog-add-actions button+button{background:#1c1e23;border-color:#4b4e55;color:#c7c8ce}
+.catalog-add-actions button:hover,.variant-actions .mini-config:hover{border-color:#bd6277;color:#fff}
+.variants-list{display:grid;gap:8px;width:100%;border-top:1px solid #393038;padding-top:10px}
+.inventory-variant{border:1px solid #393940;background:#101217;border-radius:8px;padding:11px;min-width:0}
+.variant-header{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.variant-header strong{font-size:12px;color:#e3c0c7}
+.variant-header span{font-size:10px;color:#a0a2aa}
+.variant-details{font-size:11px;line-height:1.5;color:#b1b2b9;margin-top:6px;overflow-wrap:anywhere}
+.variant-actions{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:9px;min-width:0}
+.variant-actions .qty{display:flex;align-items:center;gap:5px}
+.variant-actions .qty b{font-size:12px;min-width:18px;text-align:center}
+.variant-actions .qty button{min-width:27px}
+.variant-actions .mini-config{margin:0;white-space:normal;text-align:center;min-height:28px}
+.variant-actions .secondary-config{background:transparent;border-color:#41434b;color:#9b9fa8}
+.variant-actions .gear-equipped{margin:0 0 0 auto;white-space:nowrap}
+.sheet-inventory-row{display:flex!important;flex-wrap:wrap;align-items:flex-start;gap:5px}
+.sheet-inventory-row>span{flex:1 1 145px;min-width:0}
+.sheet-inventory-row>small{flex:0 0 auto}
+.sheet-inventory-row>details{flex:1 0 100%;min-width:0}
+.sheet-inventory-row .sheet-item-mods{flex:1 0 100%;color:#ac9eaa;font-size:10px}
+@media(max-width:600px){.variant-actions .gear-equipped{margin-left:0}.catalog-add-actions button{flex-basis:100%}}

@@ -18,12 +18,58 @@
     skills:[], combatAttack:'Luta', combatResist:'Fortitude',
     train35:[], train70:[],
     rituals:[],
-    patent:'recruta', inventory:{}, mods:{},
+    patent:'recruta', inventory:{}, itemBase:{}, nextInstanceId:1, mods:{}, curses:{}, curseOptions:{}, equipped:{}, attuned:{},
     favoriteWeapon:null,
     engineerFavoriteItem:null, utilityItem:null, paranormalToolItem:null, crimeItem:null,
     ritualElement:'', paranormalElement:'', itemType:'', itemWeaponKind:'',
   });
   let state = defaultState();
+
+  // Cada chave do inventário corresponde a uma versão INDEPENDENTE do item.
+  // Cópias antigas preservam a chave original (ex.: "a1"); novas versões usam chaves únicas.
+  // Todas as configurações (modificações, maldições, opções e uso) são indexadas por essa chave.
+  const originalId = x => state.itemBase?.[typeof x==='string'?x:x.id] || (typeof x==='string'?x:(x.baseId||x.id));
+  const itemFor = uid => {
+    const base=D.equipment.find(x=>x.id===originalId(uid));
+    return base ? {...base, id:uid, baseId:base.id} : null;
+  };
+  const inventoryItems = () => Object.keys(state.inventory).filter(id=>state.inventory[id]>0).map(itemFor).filter(Boolean);
+  const itemCopies = id => inventoryItems().filter(it=>originalId(it)===id);
+  const inventoryTotal = id => itemCopies(id).reduce((total,it)=>total+(state.inventory[it.id]||0),0);
+  const instanceDescription = it => {
+    const mods=state.mods[it.id]||[], curses=state.curses[it.id]||[];
+    const attrs=[mods.length?`${mods.length} mod.`:'',curses.length?`${curses.length} maldição(ões)`:'' ].filter(Boolean);
+    return attrs.length?attrs.join(' • '):'Sem alterações';
+  };
+  function createItemInstance(baseId, {from=null,quantity=1}={}){
+    if(!D.equipment.some(it=>it.id===baseId))return null;
+    let uid=baseId;
+    if(Object.prototype.hasOwnProperty.call(state.inventory,uid)){
+      do {uid=`${baseId}__copia${state.nextInstanceId++}`;} while(Object.prototype.hasOwnProperty.call(state.inventory,uid));
+      state.itemBase[uid]=baseId;
+    }
+    state.inventory[uid]=quantity;
+    if(from){
+      if(state.mods[from])state.mods[uid]=[...state.mods[from]];
+      if(state.curses[from])state.curses[uid]=[...state.curses[from]];
+      if(state.curseOptions[from])state.curseOptions[uid]=JSON.parse(JSON.stringify(state.curseOptions[from]));
+      if(from in state.equipped)state.equipped[uid]=state.equipped[from];
+      if(from in state.attuned)state.attuned[uid]=state.attuned[from];
+    }
+    return uid;
+  }
+  function removeItemInstance(uid){
+    const baseId=originalId(uid);
+    delete state.inventory[uid];delete state.itemBase[uid];delete state.mods[uid];
+    delete state.curses[uid];delete state.curseOptions[uid];delete state.equipped[uid];delete state.attuned[uid];
+    for(const key of ['engineerFavoriteItem','utilityItem','paranormalToolItem','crimeItem'])if(state[key]===uid)state[key]=null;
+    if(state.favoriteWeapon===baseId&&!inventoryItems().some(it=>originalId(it)===baseId))state.favoriteWeapon=null;
+  }
+  function addPlainItem(baseId){
+    const plain=itemCopies(baseId).find(it=>!(state.mods[it.id]||[]).length&&!(state.curses[it.id]||[]).length&&!Object.values(state.curseOptions[it.id]||{}).some(v=>v!==''&&v!==null));
+    if(plain)state.inventory[plain.id]++;
+    else createItemInstance(baseId);
+  }
 
   const toast = msg => { const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove('show'),1800); };
   const esc = s => String(s ?? '').replace(/[&<>"]/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m]));
@@ -121,7 +167,7 @@
     state.perito=state.perito.filter(s=>allTrainedSkills().has(s) && !['Luta','Pontaria'].includes(s)).slice(0,2);
     state.rituals=state.rituals.filter(id=>D.rituals.some(r=>r.id===id && r.circle<=maxRitualCircle())).slice(0,ritualSlots());
     const inInv=id=>id && (state.inventory[id]||0)>0;
-    if(state.favoriteWeapon && !inInv(state.favoriteWeapon)) state.favoriteWeapon=null;
+    if(state.favoriteWeapon && !inventoryItems().some(it=>originalId(it)===state.favoriteWeapon)) state.favoriteWeapon=null;
     if(state.engineerFavoriteItem && !inInv(state.engineerFavoriteItem)) state.engineerFavoriteItem=null;
     if(state.utilityItem && !inInv(state.utilityItem)) state.utilityItem=null;
     if(state.paranormalToolItem && !inInv(state.paranormalToolItem)) state.paranormalToolItem=null;
@@ -173,7 +219,7 @@
     const fav = hasFirstTrail('aniquilador');
     $('#favoriteBox').classList.toggle('hidden',!fav);
     if(fav){
-      const weaponIds=Object.keys(state.inventory).filter(id=>state.inventory[id]>0 && D.weapons.some(w=>w.id===id));
+      const weaponIds=[...new Set(inventoryItems().filter(it=>it.type==='Arma').map(it=>originalId(it)))];
       $('#favoriteWeapon').innerHTML='<option value="">Selecione...</option>'+weaponIds.map(id=>`<option value="${id}" ${state.favoriteWeapon===id?'selected':''}>${D.weapons.find(w=>w.id===id).name}</option>`).join('');
     }
   }
@@ -253,40 +299,111 @@
     }).join('') || '<div class="locked-card">Nenhum ritual disponível com os filtros atuais.</div>';
   }
 
-  function itemEffective(item){
-    let cat=item.category, spaces=item.spaces, defense=item.defense||0;
-    const mods=state.mods[item.id]||[];
-    if(item.type==='Arma'){
-      for(const id of mods){const m=D.weaponMods.find(x=>x.id===id);if(m){cat+=m.categoryDelta||1;spaces+=m.spaceDelta||0;}}
-      if(hasFirstTrail('aniquilador') && state.favoriteWeapon===item.id){
-        const red=state.nex>=99?3:state.nex>=40?2:1;
-        cat-=red;
-      }
-    } else if(item.type==='Munição'){
-      for(const id of mods){const m=D.weaponMods.find(x=>x.id===id);if(m)cat+=m.categoryDelta||1;}
-    } else if(item.type==='Proteção'){
-      for(const id of mods){const m=D.protectionMods.find(x=>x.id===id);if(m){cat+=m.categoryDelta||1;spaces+=m.spaceDelta||0;defense+=m.defenseDelta||0;}}
-    } else if(item.type==='Acessório'){
-      for(const id of mods){const m=D.accessoryMods.find(x=>x.id===id);if(m){cat+=m.categoryDelta||1;spaces+=m.spaceDelta||0;}}
-    }
-    const isGeneral=['Acessório','Explosivo','Operacional','Item paranormal'].includes(item.type);
-    if(state.trail==='tecnico' && state.nex>=40 && isGeneral) cat-=1;
-    if(state.origin==='engenheiro' && state.engineerFavoriteItem===item.id && item.type!=='Arma') cat-=1;
-    if(hasClassPower('Mochila de Utilidades') && state.utilityItem===item.id && item.type!=='Arma'){cat-=1;spaces-=1;}
-    if(hasClassPower('Ferramentas Paranormais') && state.paranormalToolItem===item.id && item.type==='Item paranormal') cat-=1;
-    return {cat:Math.max(0,cat),spaces:Math.max(0,spaces),defense:Math.max(0,defense)};
+  // O banco de maldições é carregado em equipment_extra.js (páginas 144–147 do livro).
+  const allCurses=D.curses;
+  const cursedById=id=>allCurses.find(x=>x.id===id);
+  const selectedCurses=item=>(state.curses[item.id]||[]).map(cursedById).filter(Boolean);
+  const selectedOptions=(id,curseId)=>state.curseOptions?.[id]?.[curseId]||{};
+  const isEquipped=item=>(state.inventory[item.id]||0)>0 && state.equipped?.[item.id]!==false;
+  const opponentPairs=[['Sangue','Morte'],['Sangue','Conhecimento'],['Conhecimento','Energia'],['Energia','Morte']];
+  const cursesConflict=(a,b)=>a!==b&&opponentPairs.some(p=>p.includes(a)&&p.includes(b));
+  const realCurseElement=(it,curse)=>curse.element==='Variável'?(selectedOptions(it.id,curse.id).element||null):curse.element;
+  function itemCurses(item){
+    if(item.type==='Acessório' && !['g1','g2'].includes(originalId(item)))return [];
+    if(!['Arma','Proteção','Acessório'].includes(item.type))return [];
+    return allCurses.filter(c=>c.type===item.type && (!c.mechanics.meleeOnly||item.weaponKind==='corpo-a-corpo'));
   }
-  function inventorySpace(){ return D.equipment.reduce((s,it)=>s+(state.inventory[it.id]||0)*itemEffective(it).spaces,0); }
+  function passiveCurses(){return inventoryItems().filter(isEquipped).flatMap(it=>selectedCurses(it).map(c=>({item:it,curse:c})));}
+  function gearAttrs(){
+    const a=effAttrs(); const found=new Set();
+    for(const {curse} of passiveCurses()){
+      const key=curse.mechanics.attr;
+      if(key && !found.has(curse.id)){a[key]+=1;found.add(curse.id);}
+    }
+    return a;
+  }
+  function cursePassiveSummary(){
+    const p=passiveCurses(), effects=[], uniq=new Set();
+    for(const {item,curse} of p){
+      const m=curse.mechanics;
+      if(m.resistance&&!uniq.has(curse.id)){effects.push(`${curse.name} (${item.name}): ${m.resistance}`);uniq.add(curse.id);}
+      if(m.skill&&!uniq.has('skill-'+curse.id)){effects.push(`${curse.name}: ${Object.entries(m.skill).map(([k,v])=>k+' +'+v).join(', ')}`);uniq.add('skill-'+curse.id);}
+      if(m.speed&&!uniq.has('speed-'+curse.id)){effects.push(`${curse.name}: deslocamento +${m.speed}m`);uniq.add('speed-'+curse.id);}
+      if(m.dt&&!uniq.has('dt-'+curse.id)){effects.push(`${curse.name}: DT de habilidades/rituais +${m.dt}`);uniq.add('dt-'+curse.id);}
+      if(m.pv&&state.attuned[item.id]&&!uniq.has('pv-'+curse.id)){effects.push(`${curse.name}: PV máximo +${m.pv} (1 dia de uso)`);uniq.add('pv-'+curse.id);}
+      if(m.pe&&state.attuned[item.id]&&!uniq.has('pe-'+curse.id)){effects.push(`${curse.name}: PE máximo +${m.pe} (1 dia de uso)`);uniq.add('pe-'+curse.id);}
+      if(m.damage)effects.push(`${item.name}: ${m.damage}`);
+    }
+    for(const it of inventoryItems().filter(x=>x.type==='Acessório'&&isEquipped(x))){
+      const opts=state.curseOptions?.[it.id]||{};
+      const skill=opts['accessory:skill'];
+      if(skill){const base=(state.mods[it.id]||[]).includes('am0')?5:2;effects.push(`${it.name}: ${skill} +${base}`);}
+      if((state.mods[it.id]||[]).includes('am2')&&opts['accessory:extra'])effects.push(`${it.name}: função adicional ${opts['accessory:extra']} +2`);
+      if((state.mods[it.id]||[]).includes('am3')&&opts['accessory:kit'])effects.push(`${it.name}: funciona como kit de ${opts['accessory:kit']}`);
+    }
+    return effects;
+  }
+  function itemEffective(item){
+    let cat=item.category,spaces=item.spaces,defense=item.defense||0,rd=item.rd||0;
+    if(originalId(item)==='sp-selo'){const sr=state.curseOptions?.[item.id]?.special?.ritual;const found=D.rituals.find(r=>r.id===sr);if(found)cat=found.circle;}
+    const mods=state.mods[item.id]||[];
+    const curses=selectedCurses(item);
+    if(curses.length)cat+=1+curses.length; // +II para a primeira, +I para cada posterior.
+    if(item.type==='Arma'){
+      for(const id of mods){const m=D.weaponMods.find(x=>x.id===id);if(m){cat+=m.categoryDelta??1;spaces+=m.spaceDelta||0;}}
+      if(hasFirstTrail('aniquilador')&&state.favoriteWeapon===originalId(item))cat-=state.nex>=99?3:state.nex>=40?2:1;
+    }else if(item.type==='Munição'){
+      for(const id of mods){const m=D.weaponMods.find(x=>x.id===id);if(m)cat+=m.categoryDelta??1;}
+    }else if(item.type==='Proteção'){
+      for(const id of mods){const m=D.protectionMods.find(x=>x.id===id);if(m){cat+=m.categoryDelta??1;spaces+=m.spaceDelta||0;defense+=m.defenseDelta||0;if(m.id==='pm1')rd=Math.max(rd,5);}}
+    }else if(item.type==='Acessório'){
+      for(const id of mods){const m=D.accessoryMods.find(x=>x.id===id);if(m){cat+=m.categoryDelta??1;spaces+=m.spaceDelta||0;}}
+    }
+    for(const curse of curses){defense+=curse.mechanics.defense||0;if(curse.id==='curse-cinetica')rd+=item.heavy&&item.protectionKind!=='shield'?5:2;}
+    const isGeneral=['Acessório','Explosivo','Operacional','Item paranormal'].includes(item.type);
+    if(state.trail==='tecnico'&&state.nex>=40&&isGeneral)cat-=1;
+    if(state.origin==='engenheiro'&&state.engineerFavoriteItem===item.id&&item.type!=='Arma')cat-=1;
+    if(hasClassPower('Mochila de Utilidades')&&state.utilityItem===item.id&&item.type!=='Arma'){cat-=1;spaces-=1;}
+    if(hasClassPower('Ferramentas Paranormais')&&state.paranormalToolItem===item.id&&item.type==='Item paranormal')cat-=1;
+    return {cat:Math.max(0,cat),spaces:Math.max(0,spaces),defense:Math.max(0,defense),rd:Math.max(0,rd)};
+  }
+  function weaponEffective(it){
+    const mods=state.mods[it.id]||[], curses=selectedCurses(it);
+    let bonusHit=0, bonusDamage=0, extraDice=[],threatBonus=0,threatMultiplier=1,reach=it.range||'—';
+    const modHas=id=>mods.includes(id),curseHas=id=>curses.some(c=>c.id==='curse-'+id);
+    if(modHas('wm0'))bonusHit+=2;if(modHas('wm5'))bonusHit+=2;
+    if(modHas('wm1'))bonusDamage+=2;
+    if(modHas('wm3'))threatBonus+=2;if(modHas('wm9'))threatBonus+=2;
+    if(modHas('wm6'))extraDice.push('mais 1 dado da arma (calibre grosso)');
+    if(curseHas('erosiva'))extraDice.push('+1d8 Morte');
+    if(curseHas('lancinante'))extraDice.push('+1d8 Sangue (crítico multiplica)');
+    if(curseHas('predadora'))threatMultiplier=2;
+    const order=['—','Curto','Médio','Longo','Extremo'];
+    if(it.weaponKind!=='corpo-a-corpo'&&(modHas('wm10')||curseHas('predadora'))){
+      const jumps=(modHas('wm10')?1:0)+(curseHas('predadora')?1:0);
+      reach=order[Math.min(order.length-1,Math.max(1,order.indexOf(reach))+jumps)]||reach;
+    }
+    if(curseHas('empuxo')&&it.weaponKind==='corpo-a-corpo')extraDice.push('arremesso: +1 dado da arma, retorno automático');
+    const critInput=String(it.crit||'x2');
+    const threatMatch=critInput.match(/(^|\/)1[0-9](?=\/|$)/);
+    const threatOriginal=threatMatch?Number(threatMatch[0].replace('/','')):20;
+    const margin=21-threatOriginal;
+    const threatFinal=Math.max(2,21-(margin*threatMultiplier+threatBonus));
+    const multiplierMatch=critInput.match(/x([2-9])/);
+    const critFinal=(threatFinal<20?threatFinal+'/':'')+'x'+(multiplierMatch?.[1]||2);
+    return {hit:bonusHit,bonusDamage,damage:it.damage,extraDice,crit:critFinal,range:reach};
+  }
+  function inventorySpace(){ return inventoryItems().reduce((s,it)=>s+(state.inventory[it.id]||0)*itemEffective(it).spaces,0); }
   function carryCapacity(){
-    const a=effAttrs(); let score=a.for;
+    const a=gearAttrs(); let score=a.for;
     if(state.classId==='especialista' && hasFirstTrail('tecnico'))score+=a.int;
     let cap=score<=0?2:score*5;
-    cap+=D.equipment.reduce((sum,it)=>sum+((state.inventory[it.id]||0)*(it.capacityBonus||0)),0);
+    cap+=inventoryItems().reduce((sum,it)=>sum+((state.inventory[it.id]||0)*(it.capacityBonus||0)),0);
     return cap;
   }
   function categoryCounts(){
     const c={1:0,2:0,3:0,4:0,over:0};
-    D.equipment.forEach(it=>{
+    inventoryItems().forEach(it=>{
       let q=state.inventory[it.id]||0;if(!q)return;
       if(state.origin==='criminoso' && state.crimeItem===it.id)q=Math.max(0,q-1);
       const cat=itemEffective(it).cat;
@@ -295,7 +412,7 @@
     return c;
   }
   function inventoryOptionList(filter,selected){
-    return D.equipment.filter(it=>(state.inventory[it.id]||0)>0 && filter(it)).map(it=>`<option value="${it.id}" ${selected===it.id?'selected':''}>${esc(it.name)}</option>`).join('');
+    return inventoryItems().filter(filter).map(it=>`<option value="${it.id}" ${selected===it.id?'selected':''}>${esc(it.name)} — ${esc(instanceDescription(it))}</option>`).join('');
   }
   function renderInventory(){
     $('#patentSelect').innerHTML=Object.entries(D.patent).map(([id,p])=>`<option value="${id}" ${state.patent===id?'selected':''}>${p.name}</option>`).join('');
@@ -313,18 +430,33 @@
     if(effects.length) $('#kitFavoriteBox').innerHTML=`<div><strong>Efeitos que alteram o inventário</strong><p>Escolha o item afetado por cada habilidade. Categoria e espaço são recalculados automaticamente.</p></div><div class="inventory-effect-selects">${effects.join('')}</div>`;
 
     const q=$('#itemSearch').value.trim().toLowerCase();
-    const items=D.equipment.filter(i=>(!state.itemType||i.type===state.itemType)&&(!state.itemWeaponKind||(i.type==='Arma'&&i.weaponKind===state.itemWeaponKind))&&(i.name+' '+i.type+' '+i.desc).toLowerCase().includes(q));
-    $('#inventoryCatalog').innerHTML=items.map(it=>{
-      const qty=state.inventory[it.id]||0, eff=itemEffective(it);
-      const kindLabel=it.type==='Arma'?(it.weaponKind==='corpo-a-corpo'?'Corpo a corpo':it.weaponKind==='fogo'?'Arma de fogo':'Arma de disparo'):it.type;
-      const sub=it.type==='Arma'?`${kindLabel} • ${it.damage} • crítico ${it.crit} • ${it.range}`:it.type==='Proteção'?`Defesa +${eff.defense}`:it.type;
-      const hasConfig=['Arma','Munição','Proteção','Acessório'].includes(it.type) && !(it.type==='Proteção' && it.protectionKind==='shield');
-      return `<div class="catalog-card ${qty?'selected':''}"><div><span class="type-label">${kindLabel} • Cat. ${catRoman(eff.cat)} • ${eff.spaces} espaço(s)</span><strong>${it.name}</strong><p>${sub}. ${it.desc}</p><small>${qty?`${qty} no inventário`:'Não selecionado'}</small>${hasConfig&&qty?`<button class="mini-config" data-config-item="${it.id}">Modificar</button>`:''}</div><div class="qty"><button data-item-minus="${it.id}" ${qty<=0?'disabled':''}>−</button><b>${qty}</b><button data-item-plus="${it.id}">+</button></div><button class="info-corner" data-item-info="${it.id}">i</button></div>`;
+    const items=D.equipment.filter(i=>(!state.itemType||i.type===state.itemType)&&(!state.itemWeaponKind||(i.type==='Arma'&&i.weaponKind===state.itemWeaponKind))&&(i.name+' '+i.type+' '+i.desc+' '+itemCopies(i.id).flatMap(it=>selectedCurses(it).map(c=>c.name)).join(' ')).toLowerCase().includes(q));
+    $('#inventoryCatalog').innerHTML=items.map(base=>{
+      const copies=itemCopies(base.id),total=inventoryTotal(base.id),hasConfig=['Arma','Munição','Proteção','Acessório'].includes(base.type)||base.id==='sp-selo';
+      const kindLabel=base.type==='Arma'?(base.weaponKind==='corpo-a-corpo'?'Corpo a corpo':base.weaponKind==='fogo'?'Arma de fogo':'Arma de disparo'):base.type;
+      const detail=base.type==='Arma'?`${base.damage} • crítico ${base.crit} • ${base.range}`:base.type==='Proteção'?`Defesa base +${base.defense||0}`:base.type;
+      const variants=copies.map((it,index)=>{
+        const uid=it.id,qty=state.inventory[uid]||0,eff=itemEffective(it);
+        const ws=it.type==='Arma'?weaponEffective(it):null;
+        const stats=ws?`${ws.damage}${ws.extraDice.length?' ('+ws.extraDice.join('; ')+')':''}${ws.bonusDamage?' • +'+ws.bonusDamage+' dano':''} • crítico ${ws.crit}${ws.hit?' • ataque +'+ws.hit:''}`:it.type==='Proteção'?`Defesa +${eff.defense}${eff.rd?' • RD '+eff.rd:''}`:'';
+        const equipped=['Arma','Proteção','Acessório','Amaldiçoado especial'].includes(it.type);
+        return `<div class="inventory-variant">
+          <div class="variant-header"><strong>Versão ${index+1}</strong><span>${esc(instanceDescription(it))}</span></div>
+          <div class="variant-details">Categoria ${catRoman(eff.cat)} • ${eff.spaces} espaço(s)${stats?' • '+esc(stats):''}</div>
+          ${selectedCurses(it).length?`<div class="curse-inline">${selectedCurses(it).map(c=>`<span title="${esc(c.text)}">${esc(c.name)}</span>`).join('')}</div>`:''}
+          <div class="variant-actions">
+            <div class="qty"><button data-item-minus="${uid}" aria-label="Remover uma unidade desta versão">−</button><b>${qty}</b><button data-variant-plus="${uid}" aria-label="Adicionar uma unidade idêntica">+</button></div>
+            ${hasConfig?`<button class="mini-config" data-config-item="${uid}">Modificar / amaldiçoar</button>`:''}
+            ${qty>1?`<button class="mini-config secondary-config" data-variant-split="${uid}" title="Separar uma unidade em uma versão com configurações independentes">Separar 1 un.</button>`:''}
+            ${equipped?`<label class="gear-equipped"><input type="checkbox" data-gear-equipped="${uid}" ${isEquipped(it)?'checked':''}> Em uso</label>`:''}
+          </div></div>`;
+      }).join('');
+      return `<div class="catalog-card ${total?'selected':''} catalog-with-versions"><div class="catalog-heading"><span class="type-label">${kindLabel} • Cat. ${catRoman(base.category)} • ${base.spaces} espaço(s)</span><strong>${esc(base.name)}</strong><p>${esc(detail)}. ${esc(base.desc)}</p><small>${total?`${total} unidade(s) no inventário • ${copies.length} versão(ões)`:'Não selecionado'}</small></div><div class="catalog-add-actions"><button data-item-plus="${base.id}" title="Adicionar uma unidade normal (sem alterações)">+ Adicionar normal</button><button data-item-new="${base.id}" title="Criar outra cópia configurável separadamente">+ Nova versão</button></div><button class="info-corner" data-item-info="${base.id}">i</button>${copies.length?`<div class="variants-list">${variants}</div>`:''}</div>`;
     }).join('') || '<div class="locked-card">Nenhum equipamento encontrado com os filtros atuais.</div>';
   }
 
   function renderSheet(){
-    const a=effAttrs(), c=getClass(), o=getOrigin(), t=getTrail();
+    const a=gearAttrs(), baseA=effAttrs(), c=getClass(), o=getOrigin(), t=getTrail();
     $('#sheetNex').textContent=state.nex?`NEX ${state.nex}%`:'NEX —'; $('#sheetOrigin').textContent=o?.name||'—'; $('#sheetClass').textContent=c?.name||'—'; $('#sheetTrail').textContent=t?.name||'—'; $('#sheetPatent').textContent=D.patent[state.patent].name;
     for(const [k,id] of Object.entries({agi:'#sAgi',for:'#sFor',int:'#sInt',pre:'#sPre',vig:'#sVig'}))$(id).textContent=a[k];
     $('#sheetAttrNote').textContent=boostNex.some(n=>state.nex>=n&&state.boosts[n])?'inclui aumentos de NEX':'iniciais';
@@ -332,7 +464,7 @@
     if(c&&state.nex){
       const idx=nexIndex();
       pv=c.pvBase+a.vig + idx*(c.pvStep+a.vig);
-      pe=c.peBase+a.pre + idx*(c.peStep+a.pre);
+      pe=c.peBase+baseA.pre + idx*(c.peStep+baseA.pre);
       const initialSan=o?.id==='cultista-arrependido'?Math.floor(c.sanBase/2):c.sanBase;
       san=initialSan+idx*c.sanStep-transcenderCount()*c.sanStep;
       if(o?.id==='desgarrado')pv+=Math.floor(state.nex/5);
@@ -341,22 +473,35 @@
       if(o?.id==='universitario')pe+=1+Math.floor((state.nex-5)/10);
       if(hasParanormalPower('Potencial Aprimorado'))pe+=idx+1;
       if(o?.id==='vitima')san+=Math.floor(state.nex/5);
+      const seen=new Set();for(const {item,curse} of passiveCurses()){
+        if(seen.has(curse.id))continue;seen.add(curse.id);
+        if(state.attuned?.[item.id]){pv+=curse.mechanics.pv||0;pe+=curse.mechanics.pe||0;}
+      }
     }
     $('#sheetPV').textContent=pv; $('#sheetPE').textContent=pe; $('#sheetSAN').textContent=san;
     let def=10+a.agi+(o?.id==='policial'?2:0);
     if(hasClassPower('Reflexos Defensivos'))def+=2;
     if(hasParanormalPower('Precognição'))def+=2;
-    const armors=D.protections.filter(p=>p.protectionKind==='armor'&&(state.inventory[p.id]||0)>0);
+    const armors=inventoryItems().filter(p=>p.type==='Proteção'&&p.protectionKind==='armor'&&isEquipped(p));
     if(armors.length){
       def+=Math.max(...armors.map(p=>itemEffective(p).defense+(hasClassPower('Tanque de Guerra')&&p.heavy?2:0)));
     }
-    const shield=D.protections.find(p=>p.protectionKind==='shield'&&(state.inventory[p.id]||0)>0); if(shield)def+=itemEffective(shield).defense;
+    const shield=inventoryItems().find(p=>p.type==='Proteção'&&p.protectionKind==='shield'&&isEquipped(p)); if(shield)def+=itemEffective(shield).defense;
+    if(passiveCurses().some(({curse})=>curse.id==='curse-defesa'))def+=5;
+    for(const it of inventoryItems().filter(it=>it.type==='Arma'&&isEquipped(it)))if(selectedCurses(it).some(c=>c.id==='curse-repulsora')){def+=2;break;}
     $('#sheetDEF').textContent=def;
     const used=inventorySpace(), cap=carryCapacity(), hard=cap*2; const fill=Math.min(100,used/(hard||1)*100);
     $('#loadText').textContent=`${used} / ${cap} normal • máx. ${hard}`;
     const bar=$('#loadFill');bar.style.width=`${fill}%`;bar.className=used>hard?'critical':used>cap?'warn':'';
     const st=$('#loadStatus'); st.className='status-line '+(used>hard?'critical':used>cap?'warn':''); st.textContent=used>hard?'Carga impossível: acima do dobro do limite':used>cap?'Sobrecarregado: –5 Defesa/perícias de carga e –3m deslocamento':'Carga normal';
-    const inv=D.equipment.filter(it=>(state.inventory[it.id]||0)>0); $('#sheetInventory').innerHTML=inv.length?inv.map(it=>`<div><span>${state.inventory[it.id]}× ${it.name}</span><small>Cat. ${catRoman(itemEffective(it).cat)} • ${itemEffective(it).spaces} esp.</small></div>`).join(''):'<div class="empty-state">Nenhum item selecionado.</div>';
+    const inv=inventoryItems(); $('#sheetInventory').innerHTML=inv.length?inv.map(it=>{
+      const copies=itemCopies(originalId(it)),index=copies.findIndex(x=>x.id===it.id)+1;
+      const mods=state.mods[it.id]||[];
+      const modBank=it.type==='Proteção'?D.protectionMods:it.type==='Acessório'?D.accessoryMods:D.weaponMods;
+      const modNames=mods.map(id=>modBank.find(m=>m.id===id)?.name||id);
+      return `<div class="sheet-inventory-row"><span>${state.inventory[it.id]}× ${esc(it.name)}${copies.length>1?' (versão '+index+')':''} ${isEquipped(it)&&['Arma','Proteção','Acessório','Amaldiçoado especial'].includes(it.type)?'<small>● Em uso</small>':''}</span><small>Cat. ${catRoman(itemEffective(it).cat)} • ${itemEffective(it).spaces} esp.</small>${modNames.length?`<div class="sheet-item-mods">Modificações: ${esc(modNames.join(', '))}</div>`:''}${selectedCurses(it).length?`<details><summary>Maldições: ${selectedCurses(it).map(c=>esc(c.name)).join(', ')}</summary>${selectedCurses(it).map(c=>`<p><b>${esc(c.name)}</b> (${esc(realCurseElement(it,c)||c.element)}): ${esc(c.text)}${c.mechanics.ritual&&selectedOptions(it.id,c.id).ritual?' • Ritual: '+esc(D.rituals.find(r=>r.id===selectedOptions(it.id,c.id).ritual)?.name||'—'):''}</p>`).join('')}</details>`:''}</div>`;
+    }).join(''):'<div class="empty-state">Nenhum item selecionado.</div>';
+    const pass=cursePassiveSummary();if(pass.length)$('#sheetInventory').insertAdjacentHTML('beforeend',`<div class="gear-bonus-list"><strong>Efeitos dos itens em uso</strong>${pass.map(x=>`<p>• ${esc(x)}</p>`).join('')}</div>`);
     const pows=[]; if(o)pows.push([o.power,'Origem']); if(c)pows.push([c.ability,'Classe']); if(t)t.abilities.filter(x=>x.nex<=state.nex).forEach(x=>pows.push([x.name,`Trilha ${x.nex}%`])); if(state.nex>=50 && state.versatility?.startsWith('trail:')){const vt=c?.trails.find(x=>x.id===state.versatility.split(':')[1]); if(vt)pows.push([vt.abilities[0].name,'Versatilidade']);} selectedClassPowerObjs().forEach(x=>pows.push([x.name,'Poder de classe'])); if(versatilityPowerObj())pows.push([versatilityPowerObj().name,'Versatilidade']); state.paranormal.forEach(i=>{const p=D.paranormalPowers[i]; if(p)pows.push([p.name,p.element]);}); $('#sheetPowers').innerHTML=pows.length?pows.map(([n,s])=>`<div><span>${n}</span><small>${s}</small></div>`).join(''):'<div class="empty-state">Nenhuma habilidade escolhida.</div>'; $('#powerCountLabel').textContent=`${pows.length} registradas`;
     const ranks=selectedRanks(); $('#sheetSkills').innerHTML=Object.keys(ranks).length?Object.entries(ranks).sort().map(([n,r])=>`<span>${n}${r==='Treinado'?'':` • ${r}`}</span>`).join(''):'<span>—</span>';
     const rs=state.rituals.map(id=>D.rituals.find(r=>r.id===id)).filter(Boolean); $('#sheetRituals').innerHTML=rs.length?rs.map(r=>`<div><span>${r.name}</span><small>${r.element} ${r.circle}º</small></div>`).join(''):'<div class="empty-state">Nenhum ritual.</div>';
@@ -376,7 +521,19 @@
     if(ritualSlots() && state.rituals.length<ritualSlots())add('warn',`Faltam ${ritualSlots()-state.rituals.length} ritual(is) para as fontes atuais.`);
     const used=inventorySpace(),cap=carryCapacity(); if(used>cap*2)add('error','Inventário ultrapassa o dobro da capacidade e não é permitido.'); else if(used>cap)add('warn','Personagem está sobrecarregado.'); else add('ok','Carga dentro do limite normal.');
     const counts=categoryCounts(),limits=D.patent[state.patent].limits; for(let c=1;c<=4;c++)if(counts[c]>limits[c])add('error',`Categoria ${catRoman(c)} excede a patente (${counts[c]}/${limits[c]}).`); if(counts.over)add('error',`${counts.over} item(ns) ficou(ram) acima da categoria IV após modificações/reduções.`);
+    const allCurseCount=inventoryItems().reduce((sum,it)=>sum+(state.inventory[it.id]||0)*(selectedCurses(it).length+(it.type==='Amaldiçoado especial'?1:0)),0);
+    if(allCurseCount&&!['especial','oficial','elite'].includes(state.patent))add('error','Itens amaldiçoados exigem pelo menos patente Agente Especial (livro, p. 144).');
+    for(const it of inventoryItems()){
+      const cs=selectedCurses(it);for(let i=0;i<cs.length;i++)for(let j=i+1;j<cs.length;j++){
+        const a=realCurseElement(it,cs[i]),b=realCurseElement(it,cs[j]);if(a&&b&&cursesConflict(a,b))add('error',`${it.name}: maldições ${cs[i].name} e ${cs[j].name} possuem elementos opressores.`);
+      }
+      for(const curse of cs)if(curse.mechanics.target&&!selectedOptions(it.id,curse.id).element)add('warn',`${it.name}: escolha o elemento de ${curse.name}.`);
+      for(const curse of cs)if(curse.mechanics.ritual&&!selectedOptions(it.id,curse.id).ritual)add('warn',`${it.name}: escolha o ritual de ${curse.name}.`);
+      if(originalId(it)==='sp-selo'&&!state.curseOptions?.['sp-selo']?.special?.ritual)add('warn','Selo Paranormal: escolha o ritual inscrito para determinar sua categoria.');
+    }
     if(hasFirstTrail('aniquilador')&&!state.favoriteWeapon)add('warn','Aniquilador: selecione a arma de A Favorita no inventário.');
+    if(inventoryItems().filter(it=>originalId(it)==='g2'&&isEquipped(it)).reduce((n,it)=>n+(state.inventory[it.id]||0),0)>2)add('warn','Vestimentas: apenas duas podem fornecer bônus ao mesmo tempo.');
+    if(inventoryItems().filter(p=>p.type==='Proteção'&&p.protectionKind==='armor'&&isEquipped(p)).length>1)add('warn','Há mais de uma proteção corporal marcada como em uso: a Defesa aplica somente a melhor.');
     if(state.origin==='engenheiro'&&!state.engineerFavoriteItem)add('warn','Engenheiro: selecione o item de Ferramenta Favorita no inventário.');
     if(hasClassPower('Mochila de Utilidades')&&!state.utilityItem)add('warn','Mochila de Utilidades: selecione o item beneficiado.');
     if(hasClassPower('Ferramentas Paranormais')&&!state.paranormalToolItem)add('warn','Ferramentas Paranormais: selecione o item paranormal beneficiado.');
@@ -394,24 +551,45 @@
     if(type==='inventory')openModal('Capacidade de Carga','Equipamento',`<p>Por padrão, você carrega 5 espaços por ponto de Força; com Força 0, apenas 2 espaços. Acima do limite normal fica sobrecarregado: –5 em Defesa e testes afetados por carga e –3m de deslocamento. Nunca pode ultrapassar o dobro do limite.</p><p>Armas de duas mãos e proteções leves normalmente ocupam 2 espaços; proteções pesadas, 5. A patente limita a quantidade de itens de cada categoria, enquanto categoria 0 é livre. A Mochila militar adiciona 2 espaços à capacidade e habilidades como Inventário Otimizado recalculam a carga automaticamente.</p>`);
   }
   function openItemConfig(id){
-    const it=D.equipment.find(x=>x.id===id); if(!it)return;
-    const selected=new Set(state.mods[id]||[]); let mods=[];
+    const it=itemFor(id);if(!it||(state.inventory[id]||0)<1)return;
+    const selected=new Set(state.mods[id]||[]);const active=new Set(state.curses[id]||[]);let mods=[];
     if(it.type==='Arma'){
       const autoNow=it.automatic||selected.has('wm8');
-      mods=D.weaponMods.filter(m=>m.applies?.includes(it.weaponKind) && (!m.requiresAutomatic||autoNow));
-    } else if(it.type==='Munição') mods=D.weaponMods.filter(m=>m.applies?.includes('municao-balas') && it.ammoKind==='balas');
+      mods=D.weaponMods.filter(m=>m.applies?.includes(it.weaponKind)&&(!m.requiresAutomatic||autoNow));
+    }else if(it.type==='Munição')mods=D.weaponMods.filter(m=>m.applies?.includes('municao-balas')&&it.ammoKind==='balas');
     else if(it.type==='Proteção'){
-      const pk=it.id==='prot-leve'?'light':it.id==='prot-pesada'?'heavy':null;
-      mods=pk?D.protectionMods.filter(m=>m.applies?.includes(pk)):[];
-    } else if(it.type==='Acessório')mods=D.accessoryMods;
-    const html=`<p>${esc(it.desc)}</p><p><b>Categoria base:</b> ${catRoman(it.category)} • <b>Espaço base:</b> ${it.spaces}</p><h3>Modificações</h3><p>Cada modificação aumenta a categoria em I. Restrições por tipo de arma/proteção da v1.3 são aplicadas automaticamente.</p><div class="modal-checks">${mods.length?mods.map(m=>`<label><input type="checkbox" data-mod-toggle="${id}" value="${m.id}" ${selected.has(m.id)?'checked':''}> <b>${m.name}</b><span>${m.text}</span></label>`).join(''):'<p>Nenhuma modificação aplicável a este item.</p>'}</div>`;
-    openModal(it.name,'Configurar equipamento',html);
+      const kind=it.protectionKind==='shield'?'shield':it.heavy?'heavy':'light';
+      mods=D.protectionMods.filter(m=>m.applies?.includes(kind)||(kind==='shield'&&m.id==='pm3'));
+    }else if(it.type==='Acessório')mods=D.accessoryMods;
+    const curses=itemCurses(it);
+    const skillOptions=D.skills?.map(k=>typeof k==='string'?k:k.name)||['Atletismo','Atualidades','Ciências','Crime','Diplomacia','Enganação','Fortitude','Furtividade','Investigação','Medicina','Ocultismo','Percepção','Profissão','Tecnologia','Vontade'];
+    const optSelect=(key,values,selectedValue,placeholder)=>`<label class="curse-setting">${placeholder}<select data-item-choice="${it.id}" data-choice-key="${key}"><option value="">Selecione...</option>${values.map(x=>`<option value="${esc(x.value||x)}" ${(x.value||x)===selectedValue?'selected':''}>${esc(x.label||x)}</option>`).join('')}</select></label>`;
+    const curseHtml=curses.length?`<h3>Maldições</h3><p>Primeira maldição: +II de categoria; cada posterior: +I. Não podem coexistir elementos opressores. O preço em Sanidade é cumulativo e depende do elemento (livro, p. 145). Itens amaldiçoados são requisitados a partir de Agente Especial.</p><div class="modal-checks curses-editor">${curses.map(c=>{
+      const opt=selectedOptions(id,c.id);
+      const restrictions=active.has(c.id)?'':'', element=realCurseElement(it,c);
+      const incompatible=element&&[...active].some(a=>a!==c.id&&cursesConflict(element,realCurseElement(it,cursedById(a))));
+      let inputs='';
+      if(active.has(c.id)){
+        if(c.mechanics.target)inputs+=optSelect(`${c.id}:element`,['Conhecimento','Energia','Morte','Sangue'],opt.element||'',c.id==='curse-antielemento'?'Elemento das criaturas-alvo':'Elemento da resistência');
+        if(c.mechanics.ritual)inputs+=optSelect(`${c.id}:ritual`,D.rituals.filter(r=>r.circle===1).map(r=>({value:r.id,label:r.name+' ('+r.element+')'})),opt.ritual||'','Ritual de 1º círculo');
+      }
+      return `<div class="curse-option ${incompatible?'curse-conflict':''}"><label><input type="checkbox" data-curse-toggle="${id}" value="${c.id}" ${active.has(c.id)?'checked':''}><span><b>${esc(c.name)}</b> <i>• ${esc(c.element)}</i></span></label><p>${esc(c.text)}</p>${inputs}</div>`;
+    }).join('')}</div>`:'<p>Este tipo de item não recebe maldições segundo as regras do livro.</p>';
+    const opts=state.curseOptions?.[id]||{};
+    const choiceHtml=it.type==='Acessório'?`<h3>Perícia do acessório</h3><p>Configure a perícia usada pelo utensílio ou vestimenta. Luta e Pontaria não são válidas.</p>${optSelect('accessory:skill',skillOptions.filter(x=>!['Luta','Pontaria'].includes(x)),opts['accessory:skill']||'','Perícia principal')}${selected.has('am2')?optSelect('accessory:extra',skillOptions.filter(x=>!['Luta','Pontaria'].includes(x)),opts['accessory:extra']||'','Perícia da função adicional'):''}${selected.has('am3')?optSelect('accessory:kit',skillOptions,opts['accessory:kit']||'','Perícia do kit'):''}`:'';
+    const sealHtml=originalId(it)==='sp-selo'?`<h3>Ritual gravado no selo</h3>${optSelect('special:ritual',D.rituals.map(r=>({value:r.id,label:r.name+' • '+r.circle+'º círculo • '+r.element})),opts.special?.ritual||'','Escolha o ritual do selo (categoria = círculo)')}`:'';
+    const dayCurses=selectedCurses(it).filter(c=>c.mechanics.attuneDay);
+    const dayHtml=dayCurses.length?`<label class="gear-equipped"><input type="checkbox" data-attuned="${it.id}" ${state.attuned?.[it.id]?'checked':''}> Este item já está sendo usado há pelo menos 1 dia (habilita PV/PE extra).</label>`:'';
+    const html=`<p>${esc(it.desc)}</p><p><b>Categoria base:</b> ${catRoman(it.category)} • <b>Categoria atual:</b> ${catRoman(itemEffective(it).cat)} • <b>Espaços:</b> ${itemEffective(it).spaces}</p><h3>Modificações</h3><p>Cada modificação aumenta a categoria em I. Modificações iguais não se acumulam.</p><div class="modal-checks">${mods.length?mods.map(m=>`<label><input type="checkbox" data-mod-toggle="${id}" value="${m.id}" ${selected.has(m.id)?'checked':''}> <b>${esc(m.name)}</b><span>${esc(m.text)}</span></label>`).join(''):'<p>Sem modificações aplicáveis.</p>'}</div>${choiceHtml}${curseHtml}${sealHtml}${dayHtml}<div class="curse-rule-note"><b>Preço das maldições:</b> a cada falha em um teste baseado em Intelecto (Conhecimento), Agilidade (Energia), Presença (Morte) ou Força/Vigor (Sangue), perca 2 SAN por maldição desse elemento entre seus itens aceitos. O custo continua entre missões até o afastamento do item. Elementos opressores não podem coexistir <em>no mesmo item</em>.</div>`;
+    openModal(it.name,'Configurar equipamento • Ordem Paranormal v1.3',html);
   }
 
   function save(){ const ok=storageSet('opr-ficha-v2',JSON.stringify(state)); toast(ok?'Ficha salva neste navegador.':'O navegador bloqueou o armazenamento local; use Exportar JSON.'); }
   function exportState(){ const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=(state.name||'ficha-ordem').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
   function loadState(obj){
-    state={...defaultState(),...obj,attrs:{...defaultState().attrs,...obj.attrs},boosts:{...defaultState().boosts,...obj.boosts},inventory:{...(obj.inventory||{})},mods:{...(obj.mods||{})}};
+    state={...defaultState(),...obj,attrs:{...defaultState().attrs,...obj.attrs},boosts:{...defaultState().boosts,...obj.boosts},inventory:{...(obj.inventory||{})},itemBase:{...(obj.itemBase||{})},nextInstanceId:Math.max(1,Number(obj.nextInstanceId)||1),mods:{...(obj.mods||{})},curses:{...(obj.curses||{})},curseOptions:{...(obj.curseOptions||{})},equipped:{...(obj.equipped||{})},attuned:{...(obj.attuned||{})}};
+    // Fichas antigas usam o id original como única versão; nenhuma alteração é necessária.
+    // Fichas novas preservam itemBase para recuperar o equipamento de origem.
     // Campos antigos da edição anterior são descartados para evitar aplicar regras incompatíveis.
     if(state.versatility==='paranormal')state.versatility=null;
     delete state.favoriteKit;
@@ -446,13 +624,51 @@
     if(e.target.closest('[data-ritual-element]')){state.ritualElement=e.target.closest('[data-ritual-element]').dataset.ritualElement;renderRituals();return;}
     if(e.target.closest('[data-ritual-toggle]')){const id=e.target.closest('[data-ritual-toggle]').dataset.ritualToggle;if(state.rituals.includes(id))state.rituals=state.rituals.filter(x=>x!==id);else if(state.rituals.length<ritualSlots())state.rituals.push(id);else return toast('Limite de rituais da progressão atual atingido.');renderAll();return;}
     if(e.target.closest('[data-ritual-info]')){e.stopPropagation();const r=D.rituals.find(x=>x.id===e.target.closest('[data-ritual-info]').dataset.ritualInfo);return openModal(r.name,`${r.element} • ${r.circle}º círculo`,`<div class="ritual-detail">${esc(r.details||r.summary).replace(/\n/g,'<br>')}</div>${r.page?`<p class="source-note">Livro v1.3 • página ${r.page}.</p>`:''}`);}
-    if(e.target.closest('[data-item-info]')){e.stopPropagation();const it=D.equipment.find(x=>x.id===e.target.closest('[data-item-info]').dataset.itemInfo);const eff=itemEffective(it);return openModal(it.name,it.type,`<p>${it.desc}</p><dl><dt>Categoria base</dt><dd>${catRoman(it.category)}</dd><dt>Categoria atual</dt><dd>${catRoman(eff.cat)}</dd><dt>Espaço atual</dt><dd>${eff.spaces}</dd>${it.damage?`<dt>Dano</dt><dd>${it.damage}</dd><dt>Crítico</dt><dd>${it.crit}</dd><dt>Alcance</dt><dd>${it.range}</dd><dt>Tipo de dano</dt><dd>${it.damageType}</dd><dt>Proficiência</dt><dd>${it.proficiency}</dd>`:''}</dl>`);}
-    if(e.target.closest('[data-item-plus]')){const id=e.target.closest('[data-item-plus]').dataset.itemPlus;state.inventory[id]=(state.inventory[id]||0)+1;renderAll();return;}
-    if(e.target.closest('[data-item-minus]')){const id=e.target.closest('[data-item-minus]').dataset.itemMinus;state.inventory[id]=Math.max(0,(state.inventory[id]||0)-1);if(!state.inventory[id]){delete state.inventory[id];delete state.mods[id];if(state.favoriteWeapon===id)state.favoriteWeapon=null;if(state.engineerFavoriteItem===id)state.engineerFavoriteItem=null;if(state.utilityItem===id)state.utilityItem=null;if(state.paranormalToolItem===id)state.paranormalToolItem=null;if(state.crimeItem===id)state.crimeItem=null;}renderAll();return;}
+    if(e.target.closest('[data-item-info]')){
+      e.stopPropagation();const base=D.equipment.find(x=>x.id===e.target.closest('[data-item-info]').dataset.itemInfo);
+      return openModal(base.name,base.type,`<p>${esc(base.desc)}</p><dl><dt>Categoria base</dt><dd>${catRoman(base.category)}</dd><dt>Espaço base</dt><dd>${base.spaces}</dd>${base.damage?`<dt>Dano</dt><dd>${base.damage}</dd><dt>Crítico</dt><dd>${base.crit}</dd><dt>Alcance</dt><dd>${base.range}</dd><dt>Tipo de dano</dt><dd>${base.damageType}</dd><dt>Proficiência</dt><dd>${base.proficiency}</dd>`:''}</dl><p>Adicione várias versões do mesmo equipamento e configure cada uma separadamente.</p>`);
+    }
+    if(e.target.closest('[data-item-plus]')){addPlainItem(e.target.closest('[data-item-plus]').dataset.itemPlus);renderAll();return;}
+    if(e.target.closest('[data-item-new]')){createItemInstance(e.target.closest('[data-item-new]').dataset.itemNew);renderAll();return;}
+    if(e.target.closest('[data-variant-plus]')){const id=e.target.closest('[data-variant-plus]').dataset.variantPlus;state.inventory[id]++;renderAll();return;}
+    if(e.target.closest('[data-variant-split]')){
+      const id=e.target.closest('[data-variant-split]').dataset.variantSplit;
+      if((state.inventory[id]||0)<=1)return;
+      state.inventory[id]--;
+      createItemInstance(originalId(id),{from:id});renderAll();return;
+    }
+    if(e.target.closest('[data-item-minus]')){
+      const id=e.target.closest('[data-item-minus]').dataset.itemMinus;
+      if((state.inventory[id]||0)>0){state.inventory[id]--;if(state.inventory[id]===0)removeItemInstance(id);renderAll();}return;
+    }
     if(e.target.closest('[data-config-item]'))return openItemConfig(e.target.closest('[data-config-item]').dataset.configItem);
   });
 
   document.addEventListener('change',e=>{
+    if(e.target.matches('[data-curse-toggle]')){
+      const id=e.target.dataset.curseToggle, it=itemFor(id),curse=cursedById(e.target.value);
+      if(!curse||!itemCurses(it).some(c=>c.id===curse.id))return;
+      const set=new Set(state.curses[id]||[]);
+      if(e.target.checked){
+        const elem=realCurseElement(it,curse);
+        if(elem&&[...set].some(k=>cursesConflict(elem,realCurseElement(it,cursedById(k))))){toast('Os elementos dessas maldições são opressores e incompatíveis neste item.');openItemConfig(id);return;}
+        set.add(curse.id);
+      }else{set.delete(curse.id);if(state.curseOptions[id])delete state.curseOptions[id][curse.id];}
+      state.curses[id]=[...set];renderAll();openItemConfig(id);return;
+    }
+    if(e.target.matches('[data-item-choice]')){
+      const id=e.target.dataset.itemChoice,key=e.target.dataset.choiceKey,val=e.target.value;
+      state.curseOptions[id] ||= {};
+      if(key.startsWith('accessory:'))state.curseOptions[id][key]=val;
+      else{
+        const [curseId,field]=key.split(':');const it=itemFor(id);
+        if(field==='element'&&val&&[...(state.curses[id]||[])].some(k=>k!==curseId&&cursesConflict(val,realCurseElement(it,cursedById(k))))){toast('Elemento incompatível com outra maldição escolhida.');openItemConfig(id);return;}
+        state.curseOptions[id][curseId] ||= {};state.curseOptions[id][curseId][field]=val;
+      }
+      renderAll();openItemConfig(id);return;
+    }
+    if(e.target.matches('[data-attuned]')){state.attuned[e.target.dataset.attuned]=e.target.checked;renderAll();openItemConfig(e.target.dataset.attuned);return;}
+    if(e.target.matches('[data-gear-equipped]')){const id=e.target.dataset.gearEquipped;state.equipped[id]=e.target.checked;renderAll();return;}
     if(e.target.matches('[data-mod-toggle]')){const id=e.target.dataset.modToggle;const set=new Set(state.mods[id]||[]);e.target.checked?set.add(e.target.value):set.delete(e.target.value);if(e.target.checked&&e.target.value==='pm2')set.delete('pm3');if(e.target.checked&&e.target.value==='pm3')set.delete('pm2');state.mods[id]=[...set];renderInventory();renderSheet();renderValidation();openItemConfig(id);return;}
     if(e.target.id==='versatilitySelect'){state.versatility=e.target.value||null;if(state.versatility!=='class')state.versatilityPower=null;trimDependentChoices();renderAll();}
     if(e.target.id==='versatilityPowerSelect'){state.versatilityPower=e.target.value||null;trimDependentChoices();renderAll();}
